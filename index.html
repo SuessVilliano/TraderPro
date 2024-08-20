@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Trade Panel</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f9;
+            color: #333;
+        }
+        .dark-theme {
+            background-color: #121212;
+            color: #fff;
+        }
+        .tab {
+            display: none;
+        }
+        .tab.active {
+            display: block;
+        }
+        .tab-link {
+            margin-right: 10px;
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: #fff;
+            border: none;
+            cursor: pointer;
+        }
+        .tab-link.active {
+            background-color: #0056b3;
+        }
+        .container {
+            margin: 20px;
+        }
+        .signal {
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin: 10px 0;
+            background-color: #fff;
+            border-radius: 5px;
+        }
+        .signal p {
+            margin: 5px 0;
+        }
+        .signal button {
+            margin-top: 10px;
+        }
+        .input-container {
+            margin-bottom: 10px;
+        }
+        .input-container label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        .input-container input, .input-container select {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 5px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        .input-container button {
+            padding: 10px;
+            background-color: #007bff;
+            color: #fff;
+            border: none;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+        #accountDetails p, #openTrades p {
+            margin: 5px 0;
+        }
+        #accountDetails {
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <button id="themeToggle">Switch to Dark Theme</button>
+    <div class="container">
+        <button class="tab-link active" data-tab="dashboard">Dashboard</button>
+        <button class="tab-link" data-tab="signals">Signals</button>
+        <button class="tab-link" data-tab="trades">Trades</button>
+    </div>
+    
+    <div id="dashboard" class="tab active">
+        <h1>Dashboard</h1>
+        <div class="input-container">
+            <label for="apiKey">API Key:</label>
+            <input type="text" id="apiKey" placeholder="Enter your API key">
+            <button id="fetchBalance">Fetch Account Details</button>
+            <button id="logOut" style="display: none;">Log Out</button>
+        </div>
+        <div id="accountDetails"></div>
+        <div id="openTrades"></div>
+    </div>
+
+    <div id="signals" class="tab">
+        <h1>Signals</h1>
+        <div id="signalList"></div>
+    </div>
+
+    <div id="trades" class="tab">
+        <h1>Place a Trade</h1>
+        <form id="tradeForm">
+            <div class="input-container">
+                <label for="symbol">Symbol:</label>
+                <input type="text" id="symbol" required>
+            </div>
+            <div class="input-container">
+                <label for="action">Action:</label>
+                <select id="action" required>
+                    <option value="buy">Buy</option>
+                    <option value="sell">Sell</                </select>
+            </div>
+            <div class="input-container">
+                <label for="quantity">Quantity:</label>
+                <input type="number" id="quantity" required>
+            </div>
+            <div class="input-container">
+                <label for="stopLoss">Stop Loss:</label>
+                <input type="number" id="stopLoss" required>
+            </div>
+            <div class="input-container">
+                <label for="takeProfit">Take Profit:</label>
+                <input type="number" id="takeProfit" required>
+            </div>
+            <div class="input-container">
+                <label for="trailingStop">Trailing Stop:</label>
+                <select id="trailingStop">
+                    <option value="no">No</option>
+                    <option value="yes">Yes</option>
+                </select>
+            </div>
+            <div class="input-container" id="trailingStopSettings" style="display: none;">
+                <label for="trailingAmount">Trailing Amount:</label>
+                <input type="number" id="trailingAmount">
+            </div>
+            <div class="input-container">
+                <label for="smartTrade">Smart Trade:</label>
+                <input type="checkbox" id="smartTrade">
+            </div>
+            <div class="input-container">
+                <label for="riskPercent">Risk Percent:</label>
+                <input type="number" id="riskPercent" step="0.01">
+            </div>
+            <button type="submit">Submit Trade</button>
+        </form>
+    </div>
+
+    <script>
+        let accountId;
+        let broker;
+        let signals = [
+            {
+                symbol: 'BTCUSD',
+                entry: 30000,
+                stopLoss: 29000,
+                tp1: 31000,
+                tp2: 32000,
+                tp3: 33000,
+                riskRewardRatio: 3,
+                risk: '2%',
+                created: '2024-08-05',
+                lastTriggered: '2024-08-07'
+            },
+            // Add more signals as needed
+        ];
+
+        document.querySelectorAll('.tab-link').forEach(button => {
+            button.addEventListener('click', function() {
+                document.querySelectorAll('.tab-link').forEach(btn => btn.classList.remove('active'));
+                this.classList.add('active');
+                const tabId = this.getAttribute('data-tab');
+                document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+                document.getElementById(tabId).classList.add('active');
+            });
+        });
+
+        document.getElementById('fetchBalance').addEventListener('click', function() {
+            const apiKey = document.getElementById('apiKey').value;
+            if (!apiKey) {
+                alert('Please enter your API key.');
+                return;
+            }
+            fetchAccountDetails(apiKey);
+        });
+
+        document.getElementById('logOut').addEventListener('click', function() {
+            accountId = null;
+            broker = null;
+            document.getElementById('accountDetails').innerHTML = '';
+            document.getElementById('openTrades').innerHTML = '';
+            document.getElementById('apiKey').value = '';
+            document.getElementById('logOut').style.display = 'none';
+        });
+
+        function fetchAccountDetails(apiKey) {
+            // Placeholder function for fetching account details
+            console.log('Fetching account details with API key:', apiKey);
+            // Mock response
+            const accountDetails = {
+                accountId: '123456',
+                broker: 'Demo Broker',
+                balance: 10000,
+                openTrades: [
+                    { symbol: 'BTCUSD', action: 'buy', quantity: 1, entryPrice: 30000, stopLoss: 29000, takeProfit: 31000 },
+                    { symbol: 'ETHUSD', action: 'sell', quantity: 2, entryPrice: 2000, stopLoss: 2100, takeProfit: 1900 }
+                ]
+            };
+            accountId = accountDetails.accountId;
+            broker = accountDetails.broker;
+            displayAccountDetails(accountDetails);
+        }
+
+        function displayAccountDetails(details) {
+            document.getElementById('accountDetails').innerHTML = `
+                <p><strong>Account ID:</strong> ${details.accountId}</p>
+                <p><strong>Broker:</strong> ${details.broker}</p>
+                <p><strong>Balance:</strong> $${details.balance}</p>
+            `;
+            document.getElementById('logOut').style.display = 'block';
+            displayOpenTrades(details.openTrades);
+        }
+
+        function displayOpenTrades(trades) {
+            const openTradesDiv = document.getElementById('openTrades');
+            openTradesDiv.innerHTML = '<h2>Open Trades</h2>';
+            trades.forEach(trade => {
+                const tradeDiv = document.createElement('div');
+                tradeDiv.classList.add('trade');
+                tradeDiv.innerHTML = `
+                    <p><strong>Symbol:</strong> ${trade.symbol}</p>
+                    <p><strong>Action:</strong> ${trade.action}</p>
+                    <p><strong>Quantity:</strong> ${trade.quantity}</p>
+                    <p><strong>Entry Price:</strong> ${trade.entryPrice}</p>
+                    <p><strong>Stop Loss:</strong> ${trade.stopLoss}</p>
+                    <p><strong>Take Profit:</strong> ${trade.takeProfit}</p>
+                `;
+                openTradesDiv.appendChild(tradeDiv);
+            });
+        }
+
+        function copySignal(value) {
+            navigator.clipboard.writeText(value);
+            alert('Signal copied: ' + value);
+        }
+
+        function copyAllSignal(symbol, entry, stopLoss, takeProfit) {
+            const tradeDetails = {
+                symbol,
+                entry,
+                stopLoss,
+                takeProfit
+            };
+            submitTrade(tradeDetails);
+            alert('All details copied: ' + JSON.stringify(tradeDetails));
+        }
+
+        function fetchSignals() {
+            const signalList = document.getElementById('signalList');
+            signalList.innerHTML = '';
+            signals.forEach(signal => {
+                const signalDiv = document.createElement('div');
+                signalDiv.classList.add('signal');
+                signalDiv.innerHTML = `
+                    <p><strong>Symbol:</strong> ${signal.symbol}</p>
+                    <p><strong>Entry:</strong> ${signal.entry}</p>
+                    <p><strong>Stop Loss:</strong> ${signal.stopLoss}</p>
+                    <p><strong>Take Profit 1:</strong> <span id="tp1">${signal.tp1}</span> <button onclick="copySignal(${signal.tp1})">Copy</button></p>
+                    <p><strong>Take Profit 2:</strong> <span id="tp2">${signal.tp2}</span> <button onclick="copySignal(${signal.tp2})">Copy</button></p>
+                    <p><strong>Take Profit 3:</strong> <span id="tp3">${signal.tp3}</span> <button onclick="copySignal(${signal.tp3})">Copy</button></p>
+                    <p>Risk/Reward Ratio: ${signal.riskRewardRatio}</p>
+                    <p>Risk: ${signal.risk}</p>
+                    <p>Created: ${signal.created}</p>
+                    <p>Last Triggered: ${signal.lastTriggered}</p>
+                    <button onclick="copyAllSignal('${signal.symbol}', ${signal.entry}, ${signal.stopLoss}, ${signal.tp1})">Copy All</button>
+                `;
+                signalList.appendChild(signalDiv);
+            });
+        }
+
+        function submitTrade(tradeDetails) {
+            // Placeholder function for submitting a trade
+            console.log('Submitting trade:', tradeDetails);
+        }
+
+        document.getElementById('tradeForm').addEventListener('submit', function(event) {
+            event.preventDefault();
+            const symbol = document.getElementById('symbol').value;
+            const action = document.getElementById('action').value;
+            const quantity = document.getElementById('quantity').value;
+            const stopLoss = document.getElementById('stopLoss').value;
+            const takeProfit = document.getElementById('takeProfit').value;
+            const trailingStop = document.getElementById('trailingStop').value === 'yes';
+            const trailingAmount = document.getElementById('trailingAmount').value;
+            const smartTrade = document.getElementById('smartTrade').checked;
+            const riskPercent = document.getElementById('riskPercent').value;
+
+            const tradeDetails = {
+                symbol,
+                action,
+                quantity,
+                stopLoss,
+                takeProfit,
+                trailingStop,
+                trailingAmount,
+                smartTrade,
+                riskPercent
+            };
+            submitTrade(tradeDetails);
+        });
+
+        document.getElementById('trailingStop').addEventListener('change', function() {
+            const trailingStopSettings = document.getElementById('trailingStopSettings');
+            trailingStopSettings.style.display = this.value === 'yes' ? 'block' : 'none';
+        });
+
+        document.getElementById('themeToggle').addEventListener('click', function() {
+            document.body.classList.toggle('dark-theme');
+            this.textContent = document.body.classList.contains('dark-theme') ? 'Switch to Light Theme' : 'Switch to Dark Theme';
+        });
+
+        fetchSignals();
+    </script>
+</body>
+</html>
